@@ -1,0 +1,39 @@
+# Environment & secrets
+.env
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+venv/
+.venv/
+env/
+.env/
+
+# Whisper model cache
+*.pt
+*.bin
+
+# Node / React Native (Phase 9)
+node_modules/
+.expo/
+*.lock
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,32 @@
+# ── Core runtime ──────────────────────────────────────────
+anthropic>=0.25.0            # Claude API + tool use
+fastapi>=0.111.0             # API server + WebSocket
+uvicorn[standard]>=0.29.0   # ASGI server
+python-dotenv>=1.0.0        # .env loading
+websockets>=12.0
+
+# ── Wake word ─────────────────────────────────────────────
+pvporcupine>=3.0.0          # Picovoice Porcupine ("jarvis" built-in)
+
+# ── Audio capture & playback ──────────────────────────────
+pyaudio>=0.2.14             # Mic input (on Windows: pip install pipwin && pipwin install pyaudio)
+pygame>=2.5.0               # TTS audio playback (cross-platform)
+
+# ── Speech-to-text ────────────────────────────────────────
+faster-whisper>=1.0.0       # Local Whisper ("base" model — ~150 MB)
+
+# ── Text-to-speech ────────────────────────────────────────
+edge-tts>=6.1.9             # Microsoft Edge TTS (free, no key)
+
+# ── Long-term memory ──────────────────────────────────────
+chromadb>=0.5.0             # Local vector database
+sentence-transformers>=3.0.0  # Embeddings for ChromaDB
+
+# ── Web tools (Phase 4) ───────────────────────────────────
+playwright>=1.44.0          # Browser automation
+httpx>=0.27.0               # Async HTTP client
+beautifulsoup4>=4.12.0      # HTML parsing
+
+# ── Google APIs (Phase 5) ─────────────────────────────────
+google-auth-oauthlib>=1.2.0
+google-api-python-client>=2.130.0

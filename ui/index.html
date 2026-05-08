@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JARVIS // Mission Control</title>
+  <!--
+    Full UI implemented in Phase 7.
+    Design spec: "Apple meets NASA mission control"
+      - Colors: #0a0a0f bg, #4a9eff accent, #a78bfa secondary
+      - Fonts: Space Grotesk + JetBrains Mono (Google Fonts)
+      - Centerpiece: animated canvas orb (idle / listening / thinking / speaking)
+      - Layout: header | [orb  |  transcript] | footer text input
+      - Real-time state via WebSocket /ws
+  -->
+  <style>
+    :root {
+      --bg:        #0a0a0f;
+      --panel:     #12121a;
+      --text:      #e8e8ed;
+      --muted:     #6b7280;
+      --accent:    #4a9eff;
+      --secondary: #a78bfa;
+      --border:    rgba(255, 255, 255, 0.06);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Space Grotesk', system-ui, sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2rem;
+    }
+
+    h1 {
+      font-size: clamp(1.2rem, 3vw, 1.8rem);
+      letter-spacing: 0.15em;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    p {
+      color: var(--muted);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+    }
+
+    .accent { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <h1>JARVIS <span class="accent">//</span> Mission Control</h1>
+  <p>Full UI arriving in Phase 7.</p>
+  <p>Backend is running. <span class="accent">GET /health</span> to verify.</p>
+</body>
+</html>
