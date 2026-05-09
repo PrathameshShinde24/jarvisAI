@@ -6,7 +6,8 @@ python-dotenv>=1.0.0        # .env loading
 websockets>=12.0
 
 # ── Wake word ─────────────────────────────────────────────
-pvporcupine>=3.0.0          # Picovoice Porcupine ("jarvis" built-in, free tier)
+openwakeword>=0.6.0         # Open source wake word — no signup, no API key
+numpy>=1.24.0               # Required by openwakeword
 
 # ── Audio capture & playback ──────────────────────────────
 pyaudio>=0.2.14             # Mic input (on Windows: pip install pipwin && pipwin install pyaudio)

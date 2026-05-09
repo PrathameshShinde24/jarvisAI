@@ -53,7 +53,7 @@ cp .env.example .env
 | Key | Where to get it |
 |-----|----------------|
 | `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) — free, no credit card |
-| `PICOVOICE_ACCESS_KEY` | [console.picovoice.ai](https://console.picovoice.ai) — free tier |
+| Wake word | No key needed — openwakeword downloads its model automatically |
 
 ### 3. Run
 

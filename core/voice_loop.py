@@ -68,7 +68,6 @@ class VoiceLoop:
         loop = asyncio.get_running_loop()
 
         detector = WakeWordDetector(
-            access_key=os.environ["PICOVOICE_ACCESS_KEY"],
             on_detected=self._handle_wake,
             loop=loop,
         )
