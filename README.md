@@ -52,8 +52,8 @@ cp .env.example .env
 
 | Key | Where to get it |
 |-----|----------------|
-| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) |
-| `PICOVOICE_ACCESS_KEY` | [console.picovoice.ai](https://console.picovoice.ai) (free tier) |
+| `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) — free, no credit card |
+| `PICOVOICE_ACCESS_KEY` | [console.picovoice.ai](https://console.picovoice.ai) — free tier |
 
 ### 3. Run
 

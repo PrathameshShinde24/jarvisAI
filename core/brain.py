@@ -1,26 +1,28 @@
 """
-core/brain.py — LLM orchestration via Anthropic Claude API.
+core/brain.py — LLM orchestration via Groq API (free tier).
 
-The brain takes a text input and returns a text response.
-It maintains a conversation history for the current session and
-dispatches Claude tool calls to registered tool handlers.
+Uses Llama 3.3 70B on Groq — fast inference, free, supports tool use.
+The brain takes text in and returns text out; voice is just an adapter on top.
 
-Voice is just an adapter on top — the brain only deals in text.
+Groq API is OpenAI-compatible, so tool format follows OpenAI conventions
+(different from Anthropic's format — conversion handled in _to_groq_tools).
 """
 
 from __future__ import annotations
 
-import json
 import os
 from typing import Any
 
-import anthropic
+from groq import Groq
 
-# System prompt — establishes identity, voice constraints, tool rules, memory awareness
+# ---------------------------------------------------------------------------
+# System prompt
+# ---------------------------------------------------------------------------
+
 SYSTEM_PROMPT = """You are Jarvis, a voice assistant for Prathamesh.
 
-Responses are spoken aloud — keep them concise (1–3 sentences), no markdown, no bullet points, no headers.
-After completing actions, briefly confirm what was done.
+Responses are spoken aloud — keep them concise (1-3 sentences), no markdown, no bullet points, no headers.
+After completing actions, briefly confirm what was done. Don't over-explain.
 Match a calm, professional tone — not chirpy, not robotic.
 
 Use available tools to perform actions; don't just describe what you would do.
@@ -36,20 +38,27 @@ Before executing any of these actions, verbally confirm the details with the use
 """
 
 
+# ---------------------------------------------------------------------------
+# Brain
+# ---------------------------------------------------------------------------
+
 class Brain:
-    """Manages conversation state and calls Claude with tool use."""
+    """Manages conversation state and calls Groq (Llama 3.3) with tool use."""
 
     def __init__(self, tools: list[dict[str, Any]], tool_handlers: dict[str, Any]) -> None:
         """
         Args:
-            tools:         List of Claude tool schema dicts (name, description, input_schema).
+            tools:         Tool schemas in Anthropic format (name, description, input_schema).
+                           Brain converts them to Groq/OpenAI format internally.
             tool_handlers: Mapping of tool name → callable(input_dict) → str.
         """
-        self._client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        self._model = os.getenv("CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
-        self._tools = tools
+        self._client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        self._model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+        self._groq_tools = _to_groq_tools(tools)
         self._tool_handlers = tool_handlers
-        self._history: list[dict[str, Any]] = []
+        self._history: list[dict[str, Any]] = [
+            {"role": "system", "content": SYSTEM_PROMPT}
+        ]
 
     # ------------------------------------------------------------------
     # Public API
@@ -57,7 +66,7 @@ class Brain:
 
     def think(self, user_input: str) -> str:
         """
-        Process a user message and return Jarvis's text response.
+        Process a user message and return Jarvis's response.
 
         Handles multi-turn tool-call loops automatically.
 
@@ -70,61 +79,87 @@ class Brain:
         self._history.append({"role": "user", "content": user_input})
 
         while True:
-            response = self._client.messages.create(
+            response = self._client.chat.completions.create(
                 model=self._model,
-                max_tokens=1024,
-                system=SYSTEM_PROMPT,
-                tools=self._tools,
                 messages=self._history,
+                tools=self._groq_tools if self._groq_tools else None,
+                tool_choice="auto" if self._groq_tools else None,
+                max_tokens=1024,
+                temperature=0.7,
             )
 
-            # Append assistant turn to history
-            self._history.append({"role": "assistant", "content": response.content})
+            message = response.choices[0].message
+            finish_reason = response.choices[0].finish_reason
 
-            if response.stop_reason == "end_turn":
-                # Extract plain text from the response
-                return self._extract_text(response.content)
+            # Add assistant reply to history
+            self._history.append(message.model_dump(exclude_unset=False))
 
-            if response.stop_reason == "tool_use":
-                # Execute all tool calls and feed results back
-                tool_results = self._execute_tools(response.content)
-                self._history.append({"role": "user", "content": tool_results})
-                # Loop — Claude will process results and continue
+            if finish_reason == "stop":
+                # Plain text response — we're done
+                return (message.content or "").strip()
+
+            if finish_reason == "tool_calls" and message.tool_calls:
+                # Execute every requested tool and feed results back
+                for tool_call in message.tool_calls:
+                    result = self._run_tool(tool_call)
+                    self._history.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": result,
+                    })
+                # Loop — model will process results and respond
             else:
-                return "I had trouble processing that."
+                return (message.content or "I had trouble processing that.").strip()
 
     def reset_history(self) -> None:
-        """Clear session conversation history (e.g. after a long idle period)."""
-        self._history.clear()
+        """Clear session history but keep the system prompt."""
+        self._history = [{"role": "system", "content": SYSTEM_PROMPT}]
 
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
 
-    def _execute_tools(self, content: list[Any]) -> list[dict[str, Any]]:
-        """Run all tool_use blocks in a response and return result messages."""
-        results = []
-        for block in content:
-            if block.type != "tool_use":
-                continue
-            handler = self._tool_handlers.get(block.name)
-            if handler is None:
-                result_str = f"Error: tool '{block.name}' is not registered."
-            else:
-                try:
-                    result_str = handler(block.input)
-                except Exception as exc:
-                    result_str = f"Error executing {block.name}: {exc}"
-            print(f"[Brain] Tool '{block.name}' → {result_str!r}")
-            results.append({
-                "type": "tool_result",
-                "tool_use_id": block.id,
-                "content": result_str,
-            })
-        return results
+    def _run_tool(self, tool_call: Any) -> str:
+        """Execute a single tool call and return the string result."""
+        import json
+        name = tool_call.function.name
+        try:
+            args = json.loads(tool_call.function.arguments)
+        except Exception:
+            args = {}
 
-    @staticmethod
-    def _extract_text(content: list[Any]) -> str:
-        """Pull plain text from an assistant content block list."""
-        parts = [block.text for block in content if hasattr(block, "text")]
-        return " ".join(parts).strip()
+        handler = self._tool_handlers.get(name)
+        if handler is None:
+            result = f"Error: tool '{name}' is not registered."
+        else:
+            try:
+                result = handler(args)
+            except Exception as exc:
+                result = f"Error executing {name}: {exc}"
+
+        print(f"[Brain] Tool '{name}' → {result!r}")
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Format conversion: Anthropic schema → Groq/OpenAI schema
+# ---------------------------------------------------------------------------
+
+def _to_groq_tools(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Convert Anthropic-style tool schemas to OpenAI/Groq format.
+
+    Anthropic:  { name, description, input_schema: { type, properties, required } }
+    OpenAI:     { type: "function", function: { name, description, parameters: { ... } } }
+    """
+    groq_tools = []
+    for t in tools:
+        groq_tools.append({
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t.get("description", ""),
+                "parameters": t.get("input_schema", {"type": "object", "properties": {}}),
+            },
+        })
+    return groq_tools
