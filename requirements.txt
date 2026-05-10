@@ -5,9 +5,9 @@ uvicorn[standard]>=0.29.0   # ASGI server
 python-dotenv>=1.0.0        # .env loading
 websockets>=12.0
 
-# ── Wake word ─────────────────────────────────────────────
-openwakeword>=0.6.0         # Open source wake word — no signup, no API key
-numpy>=1.24.0               # Required by openwakeword
+# ── Wake trigger ──────────────────────────────────────────
+keyboard>=0.13.5            # Global hotkey listener (Ctrl+Space activates Jarvis)
+numpy>=1.24.0               # Audio RMS calculation
 
 # ── Audio capture & playback ──────────────────────────────
 pyaudio>=0.2.14             # Mic input (on Windows: pip install pipwin && pipwin install pyaudio)

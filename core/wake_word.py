@@ -1,103 +1,77 @@
 """
-core/wake_word.py — Wake word detection using openwakeword (free, no signup).
+core/wake_word.py — Wake trigger via keyboard hotkey (Ctrl+Space).
 
-Listens continuously for "Jarvis" using a pre-trained openwakeword model.
-Runs in its own thread; calls an async callback when the wake word fires.
+openwakeword's 'hey_jarvis' model is not in their standard model set,
+so we use a keyboard hotkey as the activation trigger instead.
+This is reliable, zero-dependency, and works great for demos.
 
-openwakeword: https://github.com/dscripka/openWakeWord
-  - Fully open source, no API key, no account needed
-  - Models download automatically on first run (~5 MB)
-  - Sensitivity tunable via WAKE_WORD_THRESHOLD in .env (default 0.5)
+Hotkey: Ctrl+Space  →  activates Jarvis (same as saying "Hey Jarvis")
+
+To change the hotkey, set WAKE_HOTKEY in your .env file.
+e.g. WAKE_HOTKEY=ctrl+j  or  WAKE_HOTKEY=f9
 """
 
 from __future__ import annotations
 
 import asyncio
-import time
+import os
 import threading
+import time
 from typing import Callable, Coroutine, Any
 
-import numpy as np
-import pyaudio
-from openwakeword.model import Model
+import keyboard
 
-SAMPLE_RATE = 16_000
-FRAME_SIZE  = 1280          # ~80 ms at 16 kHz — required by openwakeword
-COOLDOWN    = 2.0           # seconds to wait before re-triggering
+COOLDOWN = 2.0  # seconds before re-triggering is allowed
 
 
 class WakeWordDetector:
-    """Detects 'Jarvis' using openwakeword (offline, no API key)."""
+    """Keyboard-based wake trigger. Fires callback when hotkey is pressed."""
 
     def __init__(
         self,
         on_detected: Callable[[], Coroutine[Any, Any, None]],
         loop: asyncio.AbstractEventLoop,
-        threshold: float = 0.5,
+        threshold: float = 0.5,   # kept for API compatibility, unused here
     ) -> None:
         """
         Args:
-            on_detected: Async coroutine called when wake word fires.
+            on_detected: Async coroutine called when hotkey is pressed.
             loop:        Running asyncio event loop.
-            threshold:   Confidence threshold 0.0–1.0 (default 0.5).
-                         Lower = more sensitive, higher = fewer false triggers.
+            threshold:   Unused — kept for drop-in compatibility with future detectors.
         """
-        self._on_detected = on_detected
-        self._loop        = loop
-        self._threshold   = threshold
-        self._running     = False
+        self._on_detected  = on_detected
+        self._loop         = loop
+        self._running      = False
+        self._last_trigger = 0.0
+        self._hotkey       = os.getenv("WAKE_HOTKEY", "ctrl+space")
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
-        """Start detector in a background daemon thread."""
+        """Register hotkey and start background listener thread."""
         self._running = True
         self._thread  = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
-        """Signal the detector to stop."""
+        """Unregister hotkey and stop listener."""
         self._running = False
+        try:
+            keyboard.remove_hotkey(self._hotkey)
+        except Exception:
+            pass
 
     def _run(self) -> None:
-        """Blocking detection loop — runs in dedicated thread."""
+        """Register the hotkey and keep thread alive until stopped."""
+        print(f"[WakeWord] Press  {self._hotkey.upper()}  to activate Jarvis.")
+        keyboard.add_hotkey(self._hotkey, self._on_hotkey_pressed)
+        while self._running:
+            time.sleep(0.1)
 
-        print("[WakeWord] Loading model (first run downloads ~5 MB)...")
-        try:
-            oww = Model(wakeword_models=["hey_jarvis"], inference_framework="onnx")
-            target = "hey_jarvis"
-            print("[WakeWord] 'hey_jarvis' model loaded.")
-        except Exception as e:
-            print(f"[WakeWord] hey_jarvis model unavailable ({e}), using default model.")
-            oww = Model(inference_framework="onnx")
-            target = list(oww.models.keys())[0]
-            print(f"[WakeWord] Using '{target}' — say this word to activate Jarvis.")
-
-        pa     = pyaudio.PyAudio()
-        stream = pa.open(
-            rate=SAMPLE_RATE,
-            channels=1,
-            format=pyaudio.paInt16,
-            input=True,
-            frames_per_buffer=FRAME_SIZE,
-        )
-
-        last_trigger = 0.0
-        print(f"[WakeWord] Listening... (threshold={self._threshold})")
-
-        try:
-            while self._running:
-                raw   = stream.read(FRAME_SIZE, exception_on_overflow=False)
-                audio = np.frombuffer(raw, dtype=np.int16)
-
-                predictions = oww.predict(audio)
-                score = predictions.get(target, 0.0)
-
-                now = time.monotonic()
-                if score >= self._threshold and (now - last_trigger) > COOLDOWN:
-                    print(f"[WakeWord] Detected! (score={score:.2f})")
-                    last_trigger = now
-                    asyncio.run_coroutine_threadsafe(self._on_detected(), self._loop)
-        finally:
-            stream.stop_stream()
-            stream.close()
-            pa.terminate()
+    def _on_hotkey_pressed(self) -> None:
+        """Called synchronously by the keyboard library on hotkey press."""
+        now = time.monotonic()
+        if now - self._last_trigger < COOLDOWN:
+            return
+        self._last_trigger = now
+        print("[WakeWord] Hotkey detected — activating Jarvis.")
+        asyncio.run_coroutine_threadsafe(self._on_detected(), self._loop)
