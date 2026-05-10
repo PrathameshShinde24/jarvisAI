@@ -29,8 +29,9 @@ SAMPLE_RATE = 16_000       # Hz — matches Whisper's expected input
 CHANNELS = 1
 FORMAT = pyaudio.paInt16
 CHUNK = 1024               # frames per buffer
-SILENCE_THRESHOLD = 500    # RMS below this → silence
+SILENCE_THRESHOLD = 300    # RMS below this → silence (lowered for sensitivity)
 SILENCE_DURATION = 1.5     # seconds of silence before stopping
+GRACE_PERIOD = 1.0         # seconds before silence detection kicks in (user prep time)
 MAX_DURATION = 10.0        # hard cap on recording length
 
 
@@ -58,13 +59,18 @@ def record_until_silence() -> bytes:
     silence_start: float | None = None
     start_time = time.monotonic()
 
-    print("[Audio] Recording...")
+    print("[Audio] Recording... (speak now)")
     while True:
         data = stream.read(CHUNK, exception_on_overflow=False)
         frames.append(data)
 
-        rms = _rms(data)
         elapsed = time.monotonic() - start_time
+        rms     = _rms(data)
+
+        # Grace period — don't check silence for the first second
+        # so the user has time to start speaking after hearing "Yes?"
+        if elapsed < GRACE_PERIOD:
+            continue
 
         if rms < SILENCE_THRESHOLD:
             if silence_start is None:
