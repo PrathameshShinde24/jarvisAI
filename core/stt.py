@@ -15,6 +15,11 @@ from faster_whisper import WhisperModel
 _model: WhisperModel | None = None
 
 
+def get_model(model_size: str = "base") -> WhisperModel:
+    """Public alias for pre-warming the model before recording."""
+    return _get_model(model_size)
+
+
 def _get_model(model_size: str = "base") -> WhisperModel:
     global _model
     if _model is None:
