@@ -3,6 +3,11 @@ core/tts.py — Text-to-speech via edge-tts (Microsoft Edge TTS, free, no API ke
 
 Synthesises text to an MP3 in-memory buffer and plays it immediately.
 Voice: en-US-GuyNeural (calm, professional male voice — suits Jarvis).
+
+Two entry points:
+  speak(text)        — sync, safe to call from non-async code / tests
+  speak_async(text)  — async, runs playback in executor so the event loop
+                       is not blocked
 """
 
 from __future__ import annotations
@@ -14,12 +19,15 @@ import edge_tts
 
 from core.audio import play_audio_bytes
 
-# Microsoft Edge Neural voice — change here to swap voice globally
 VOICE = "en-US-GuyNeural"
 
 
+# ---------------------------------------------------------------------------
+# Internal synthesis
+# ---------------------------------------------------------------------------
+
 async def _synthesise(text: str) -> bytes:
-    """Return MP3 bytes for the given text."""
+    """Async: synthesise text → MP3 bytes via edge-tts."""
     communicate = edge_tts.Communicate(text, VOICE)
     buf = io.BytesIO()
     async for chunk in communicate.stream():
@@ -28,27 +36,38 @@ async def _synthesise(text: str) -> bytes:
     return buf.getvalue()
 
 
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
 def speak(text: str) -> None:
     """
-    Synthesise `text` via edge-tts and play it immediately.
+    Synthesise and play text — blocking, safe to call from sync code.
 
-    Blocks until playback finishes. Safe to call from sync code.
+    Creates its own temporary event loop for synthesis, then plays via
+    pygame. Do NOT call this from inside an already-running event loop
+    (use speak_async instead).
 
     Args:
-        text: Plain text to speak — no markdown, no bullet points.
+        text: Plain text — no markdown, no bullet points.
     """
     print(f"[TTS] Speaking: {text!r}")
     mp3_bytes = asyncio.run(_synthesise(text))
-    play_audio_bytes(mp3_bytes, suffix=".mp3")
+    play_audio_bytes(mp3_bytes, ".mp3")
 
 
 async def speak_async(text: str) -> None:
     """
-    Async version of speak() — use inside async contexts.
+    Synthesise and play text — async-safe.
+
+    Synthesis runs natively async; pygame playback runs in a thread
+    executor so the event loop is never blocked.
 
     Args:
-        text: Plain text to speak.
+        text: Plain text — no markdown, no bullet points.
     """
     print(f"[TTS] Speaking: {text!r}")
     mp3_bytes = await _synthesise(text)
-    play_audio_bytes(mp3_bytes, suffix=".mp3")
+    # Playback is blocking (pygame) — offload to thread executor
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, play_audio_bytes, mp3_bytes, ".mp3")

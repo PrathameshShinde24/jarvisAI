@@ -16,6 +16,7 @@ import time
 import wave
 from pathlib import Path
 
+import numpy as np
 import pyaudio
 import pygame
 
@@ -62,7 +63,6 @@ def record_until_silence() -> bytes:
         data = stream.read(CHUNK, exception_on_overflow=False)
         frames.append(data)
 
-        # RMS-based silence detection
         rms = _rms(data)
         elapsed = time.monotonic() - start_time
 
@@ -107,6 +107,7 @@ _mixer_initialized = False
 def _ensure_mixer() -> None:
     global _mixer_initialized
     if not _mixer_initialized:
+        pygame.mixer.pre_init(frequency=44100, size=-16, channels=2, buffer=512)
         pygame.mixer.init()
         _mixer_initialized = True
 
@@ -127,7 +128,10 @@ def play_audio_file(path: str | Path) -> None:
 
 def play_audio_bytes(data: bytes, suffix: str = ".mp3") -> None:
     """
-    Play audio from an in-memory bytes object.
+    Play audio from an in-memory bytes object (blocking).
+
+    Safe to call from a thread or executor — uses pygame which is
+    thread-safe once the mixer is initialised.
 
     Args:
         data:   Raw audio bytes.
@@ -146,6 +150,13 @@ def play_audio_bytes(data: bytes, suffix: str = ".mp3") -> None:
 # ---------------------------------------------------------------------------
 
 def _rms(data: bytes) -> float:
-    """Compute root-mean-square energy of a PCM chunk."""
-    import audioop  # stdlib — available wherever pyaudio is
-    return audioop.rms(data, 2)
+    """
+    Compute root-mean-square energy of a 16-bit PCM chunk.
+
+    Uses numpy — works on all Python versions (replaces audioop which
+    was removed in Python 3.13).
+    """
+    if not data:
+        return 0.0
+    audio = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+    return float(np.sqrt(np.mean(audio ** 2)))
