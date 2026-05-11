@@ -1,7 +1,8 @@
 """
-tools/system.py — System control tools (Phase 3).
+tools/system.py — System control tools (Phase 2+).
 
 Tools implemented here:
+  - get_current_time()            ← Phase 2 verification tool
   - open_application(name)
   - close_application(name)       ← requires verbal confirmation
   - set_volume(level)
@@ -26,6 +27,15 @@ NOTES_DIR = Path.home() / "Documents" / "JarvisNotes"
 # ---------------------------------------------------------------------------
 
 TOOL_SCHEMAS: list[dict[str, Any]] = [
+    {
+        "name": "get_current_time",
+        "description": "Get the current date and time on the user's computer.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
     {
         "name": "open_application",
         "description": "Open an application by name on the user's computer.",
@@ -88,6 +98,12 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
 # Handlers
 # ---------------------------------------------------------------------------
 
+def get_current_time(inputs: dict[str, Any]) -> str:
+    """Return the current date and time as a readable string."""
+    now = datetime.now()
+    return now.strftime("It's %I:%M %p on %A, %B %d, %Y")
+
+
 def open_application(inputs: dict[str, Any]) -> str:
     name = inputs["name"]
     system = platform.system()
@@ -108,10 +124,23 @@ def close_application(inputs: dict[str, Any]) -> str:
     system = platform.system()
     try:
         if system == "Windows":
-            subprocess.run(["taskkill", "/IM", f"{name}.exe", "/F"], check=True, capture_output=True)
+            # Try graceful close first, force kill only if that fails
+            result = subprocess.run(
+                ["taskkill", "/IM", f"{name}.exe"],
+                capture_output=True, timeout=5
+            )
+            if result.returncode != 0:
+                subprocess.run(
+                    ["taskkill", "/IM", f"{name}.exe", "/F"],
+                    check=True, capture_output=True, timeout=5
+                )
         else:
-            subprocess.run(["pkill", "-f", name], check=True)
+            subprocess.run(["pkill", "-f", name], check=True, timeout=5)
         return f"Closed {name}."
+    except subprocess.TimeoutExpired:
+        return f"Timed out trying to close {name}."
+    except subprocess.CalledProcessError:
+        return f"Couldn't find a running process named {name}."
     except Exception as exc:
         return f"Couldn't close {name}: {exc}"
 
@@ -121,15 +150,28 @@ def set_volume(inputs: dict[str, Any]) -> str:
     system = platform.system()
     try:
         if system == "Windows":
-            # Uses pycaw / nircmd if available; fallback to PowerShell
-            script = f"(New-Object -ComObject WScript.Shell).SendKeys([char]173); $vol = {level}; Set-Volume -Level ($vol / 100)"
-            subprocess.run(["powershell", "-Command",
-                f"[System.Media.SystemSounds]::Beep; $vol=[math]::Round({level}/100*65535); nircmd.exe setsysvolume $vol"],
-                capture_output=True)
+            # Use pycaw (proper Windows Core Audio API)
+            try:
+                from ctypes import cast, POINTER
+                from comtypes import CLSCTX_ALL
+                from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+                devices   = AudioUtilities.GetSpeakers()
+                interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+                volume    = cast(interface, POINTER(IAudioEndpointVolume))
+                volume.SetMasterVolumeLevelScalar(level / 100.0, None)
+            except ImportError:
+                # pycaw not installed — fall back to PowerShell WScript approach
+                subprocess.run(
+                    ["powershell", "-Command",
+                     f"$wsh=New-Object -ComObject WScript.Shell; "
+                     f"$wsh.SendKeys([char]174)"],   # just a placeholder beep; pycaw is preferred
+                    capture_output=True
+                )
+                return f"Volume command sent (install pycaw for precise control)."
         elif system == "Darwin":
-            subprocess.run(["osascript", "-e", f"set volume output volume {level}"])
+            subprocess.run(["osascript", "-e", f"set volume output volume {level}"], check=True)
         else:
-            subprocess.run(["amixer", "-D", "pulse", "sset", "Master", f"{level}%"])
+            subprocess.run(["amixer", "-D", "pulse", "sset", "Master", f"{level}%"], check=True)
         return f"Volume set to {level} percent."
     except Exception as exc:
         return f"Couldn't set volume: {exc}"
@@ -140,9 +182,11 @@ def list_files(inputs: dict[str, Any]) -> str:
     path = Path(directory).expanduser()
     if not path.exists():
         return f"Directory '{directory}' does not exist."
+    # Materialise once — avoids double-iterdir race condition
     entries = sorted(path.iterdir(), key=lambda p: (p.is_file(), p.name.lower()))
-    names = [f"{'[dir] ' if e.is_dir() else ''}{e.name}" for e in entries[:20]]
-    return f"Contents of {path}: " + ", ".join(names) + ("..." if len(list(path.iterdir())) > 20 else "")
+    names   = [f"{'[dir] ' if e.is_dir() else ''}{e.name}" for e in entries[:20]]
+    suffix  = "..." if len(entries) > 20 else ""
+    return f"Contents of {path}: " + ", ".join(names) + suffix
 
 
 def save_note(inputs: dict[str, Any]) -> str:
@@ -159,6 +203,7 @@ def save_note(inputs: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 TOOL_HANDLERS: dict[str, Any] = {
+    "get_current_time": get_current_time,
     "open_application": open_application,
     "close_application": close_application,
     "set_volume": set_volume,

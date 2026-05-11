@@ -81,12 +81,17 @@ def web_search(inputs: dict[str, Any]) -> str:
     url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
     try:
         resp = httpx.get(url, headers=HEADERS, timeout=10, follow_redirects=True)
+        resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
         results = soup.select(".result__body")[:4]
         snippets = [r.get_text(separator=" ", strip=True) for r in results]
         if not snippets:
             return "No results found."
         return " | ".join(snippets[:3])
+    except httpx.HTTPStatusError as exc:
+        return f"Search returned HTTP {exc.response.status_code}."
+    except httpx.RequestError as exc:
+        return f"Search failed — network error: {exc}"
     except Exception as exc:
         return f"Search failed: {exc}"
 
@@ -103,13 +108,16 @@ def fetch_page(inputs: dict[str, Any]) -> str:
     url = inputs["url"]
     try:
         resp = httpx.get(url, headers=HEADERS, timeout=10, follow_redirects=True)
+        resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
-        # Remove scripts and style tags
         for tag in soup(["script", "style", "nav", "footer"]):
             tag.decompose()
         text = soup.get_text(separator=" ", strip=True)
-        # Truncate to keep response manageable
         return text[:3000] + ("..." if len(text) > 3000 else "")
+    except httpx.HTTPStatusError as exc:
+        return f"Page returned HTTP {exc.response.status_code}."
+    except httpx.RequestError as exc:
+        return f"Couldn't fetch page — network error: {exc}"
     except Exception as exc:
         return f"Couldn't fetch page: {exc}"
 

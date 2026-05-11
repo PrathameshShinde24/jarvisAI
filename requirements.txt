@@ -28,6 +28,10 @@ playwright>=1.44.0          # Browser automation
 httpx>=0.27.0               # Async HTTP client
 beautifulsoup4>=4.12.0      # HTML parsing
 
+# ── Windows system control ────────────────────────────────
+pycaw>=20230407             # Windows Core Audio API (volume control)
+comtypes>=1.4.0             # Required by pycaw
+
 # ── Google APIs (Phase 5) ─────────────────────────────────
 google-auth-oauthlib>=1.2.0
 google-api-python-client>=2.130.0
