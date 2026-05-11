@@ -118,8 +118,8 @@ class VoiceLoop:
         await self._set_state(STATE_THINKING)
         text = await loop.run_in_executor(None, transcribe, wav)
 
-        # 4. Skip if empty / too short
-        if not text or len(text.split()) < 2:
+        # 4. Skip if empty or pure noise
+        if not text or len(text.strip()) < 2:
             await speak_async("I didn't catch that.")
             await self._set_state(STATE_IDLE)
             return

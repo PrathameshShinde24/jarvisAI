@@ -10,10 +10,11 @@ Groq API is OpenAI-compatible, so tool format follows OpenAI conventions
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
-from groq import Groq
+from groq import Groq, APIConnectionError, APIStatusError, RateLimitError
 
 # ---------------------------------------------------------------------------
 # System prompt
@@ -79,27 +80,48 @@ class Brain:
         self._history.append({"role": "user", "content": user_input})
 
         while True:
-            response = self._client.chat.completions.create(
-                model=self._model,
-                messages=self._history,
-                tools=self._groq_tools if self._groq_tools else None,
-                tool_choice="auto" if self._groq_tools else None,
-                max_tokens=1024,
-                temperature=0.7,
-            )
+            try:
+                response = self._client.chat.completions.create(
+                    model=self._model,
+                    messages=self._history,
+                    tools=self._groq_tools if self._groq_tools else None,
+                    tool_choice="auto" if self._groq_tools else None,
+                    max_tokens=1024,
+                    temperature=0.7,
+                )
+            except RateLimitError:
+                return "I'm being rate limited. Please try again in a moment."
+            except APIConnectionError:
+                return "I couldn't reach the server. Please check your internet connection."
+            except APIStatusError as exc:
+                return f"Sorry, I had trouble thinking just now. ({exc.status_code})"
 
             message = response.choices[0].message
             finish_reason = response.choices[0].finish_reason
 
-            # Add assistant reply to history
-            self._history.append(message.model_dump(exclude_unset=False))
-
             if finish_reason == "stop":
-                # Plain text response — we're done
+                # Plain text response — append and return
+                self._history.append({"role": "assistant", "content": message.content or ""})
                 return (message.content or "").strip()
 
             if finish_reason == "tool_calls" and message.tool_calls:
-                # Execute every requested tool and feed results back
+                # Append assistant message with tool_calls in clean Groq format
+                self._history.append({
+                    "role": "assistant",
+                    "content": message.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in message.tool_calls
+                    ],
+                })
+                # Execute every tool and append results
                 for tool_call in message.tool_calls:
                     result = self._run_tool(tool_call)
                     self._history.append({
@@ -107,7 +129,7 @@ class Brain:
                         "tool_call_id": tool_call.id,
                         "content": result,
                     })
-                # Loop — model will process results and respond
+                # Loop — model reads tool results and gives final response
             else:
                 return (message.content or "I had trouble processing that.").strip()
 
@@ -121,11 +143,10 @@ class Brain:
 
     def _run_tool(self, tool_call: Any) -> str:
         """Execute a single tool call and return the string result."""
-        import json
         name = tool_call.function.name
         try:
             args = json.loads(tool_call.function.arguments)
-        except Exception:
+        except json.JSONDecodeError:
             args = {}
 
         handler = self._tool_handlers.get(name)

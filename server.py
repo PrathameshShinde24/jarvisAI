@@ -1,8 +1,8 @@
 """
 server.py — Jarvis FastAPI entry point.
 
-Phase 1: Voice loop in echo mode (hotkey → record → STT → TTS echo).
-Phase 2: Brain injected for LLM responses.
+Phase 1: Voice loop echo mode.
+Phase 2: Brain (Groq LLM + tools) injected into voice loop.
 Phase 8: POST /command and WS /ws added.
 
 Run:
@@ -22,33 +22,40 @@ from fastapi.responses import HTMLResponse
 load_dotenv()
 
 from core.voice_loop import VoiceLoop
+from core.brain import Brain
+from tools import ALL_SCHEMAS, ALL_HANDLERS
 
 voice_loop = VoiceLoop()
 
 
 # ---------------------------------------------------------------------------
-# Lifespan (replaces deprecated on_event)
+# Lifespan
 # ---------------------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Pre-warm models and start voice loop on boot; clean up on shutdown."""
-    # ── Startup ──
+    """Pre-warm models, wire Brain, start voice loop."""
     loop = asyncio.get_running_loop()
+
+    # Pre-warm Whisper so it's never loading during a live recording
     await loop.run_in_executor(None, _prewarm_models)
+
+    # Phase 2 — inject Brain into voice loop (replaces echo mode)
+    voice_loop.brain = Brain(tools=ALL_SCHEMAS, tool_handlers=ALL_HANDLERS)
+    print("[Jarvis] Brain online — Groq Llama 3.3 with tools ready.")
+
     task = asyncio.create_task(voice_loop.run())
     print("[Jarvis] Ready. Press CTRL+SPACE to activate.")
 
     yield  # server is running
 
-    # ── Shutdown ──
     voice_loop.stop()
     task.cancel()
     print("[Jarvis] Shutdown complete.")
 
 
 def _prewarm_models() -> None:
-    """Load Whisper at startup so it's never downloading during a live recording."""
+    """Load Whisper at startup so it's never downloading mid-conversation."""
     from core.stt import get_model
     print("[Jarvis] Pre-warming Whisper model...")
     get_model()
@@ -59,7 +66,7 @@ def _prewarm_models() -> None:
 # App
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="Jarvis", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Jarvis", version="0.2.0", lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +86,7 @@ async def root() -> HTMLResponse:
 @app.get("/health")
 async def health() -> dict:
     """Liveness check — returns current assistant state."""
-    return {"status": "ok", "version": "0.1.0", "state": voice_loop._state}
+    return {"status": "ok", "version": "0.2.0", "state": voice_loop._state}
 
 
 # ---------------------------------------------------------------------------
