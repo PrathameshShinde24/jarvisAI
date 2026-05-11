@@ -42,16 +42,17 @@ def transcribe(audio: bytes, is_wav: bool = True) -> str:
         Returns an empty string if nothing was detected.
     """
     model = _get_model()
-    audio_file = io.BytesIO(audio)
 
-    segments, _info = model.transcribe(
-        audio_file,
-        beam_size=5,
-        language="en",
-        vad_filter=True,          # skip silent segments
-        vad_parameters={"min_silence_duration_ms": 500},
-    )
+    with io.BytesIO(audio) as audio_file:
+        segments, _info = model.transcribe(
+            audio_file,
+            beam_size=5,
+            language="en",
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 500},
+        )
+        # Consume generator while BytesIO is still open
+        text = " ".join(seg.text for seg in segments).strip()
 
-    text = " ".join(seg.text for seg in segments).strip()
     print(f"[STT] Transcribed: {text!r}")
     return text

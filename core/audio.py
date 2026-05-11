@@ -60,34 +60,36 @@ def record_until_silence() -> bytes:
     start_time = time.monotonic()
 
     print("[Audio] Recording... (speak now)")
-    while True:
-        data = stream.read(CHUNK, exception_on_overflow=False)
-        frames.append(data)
+    try:
+        while True:
+            data = stream.read(CHUNK, exception_on_overflow=False)
+            frames.append(data)
 
-        elapsed = time.monotonic() - start_time
-        rms     = _rms(data)
+            elapsed = time.monotonic() - start_time
+            rms     = _rms(data)
 
-        # Grace period — don't check silence for the first second
-        # so the user has time to start speaking after hearing "Yes?"
-        if elapsed < GRACE_PERIOD:
-            continue
+            # Grace period — don't check silence for the first second
+            # so the user has time to start speaking after hearing "Yes?"
+            if elapsed < GRACE_PERIOD:
+                continue
 
-        if rms < SILENCE_THRESHOLD:
-            if silence_start is None:
-                silence_start = time.monotonic()
-            elif time.monotonic() - silence_start >= SILENCE_DURATION:
-                print("[Audio] Silence detected — stopping.")
+            if rms < SILENCE_THRESHOLD:
+                if silence_start is None:
+                    silence_start = time.monotonic()
+                elif time.monotonic() - silence_start >= SILENCE_DURATION:
+                    print("[Audio] Silence detected — stopping.")
+                    break
+            else:
+                silence_start = None
+
+            if elapsed >= MAX_DURATION:
+                print("[Audio] Max duration reached — stopping.")
                 break
-        else:
-            silence_start = None
-
-        if elapsed >= MAX_DURATION:
-            print("[Audio] Max duration reached — stopping.")
-            break
-
-    stream.stop_stream()
-    stream.close()
-    pa.terminate()
+    finally:
+        # Always release mic — even if an exception occurs mid-recording
+        stream.stop_stream()
+        stream.close()
+        pa.terminate()
 
     return b"".join(frames)
 

@@ -8,7 +8,7 @@ Provides two Claude tools:
 
 from __future__ import annotations
 
-import os
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -82,7 +82,7 @@ class MemoryStore:
     def remember_fact(self, inputs: dict[str, str]) -> str:
         """Store a fact. Returns a confirmation string."""
         fact = inputs["fact"]
-        doc_id = f"fact_{self._collection.count()}_{hash(fact) & 0xFFFFFF}"
+        doc_id = f"fact_{uuid.uuid4().hex}"   # UUID — guaranteed unique, no collision risk
         self._collection.add(documents=[fact], ids=[doc_id])
         return f"Got it, I'll remember that: {fact}"
 
