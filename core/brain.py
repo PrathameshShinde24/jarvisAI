@@ -158,7 +158,7 @@ class Brain:
             except Exception as exc:
                 result = f"Error executing {name}: {exc}"
 
-        print(f"[Brain] Tool '{name}' → {result!r}")
+        print(f"[Brain] Tool '{name}' -> {result!r}")
         return result
 
 

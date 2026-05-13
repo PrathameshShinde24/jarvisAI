@@ -21,7 +21,7 @@ from typing import Callable, Coroutine, Any
 
 import keyboard
 
-COOLDOWN = 2.0  # seconds before re-triggering is allowed
+COOLDOWN = 0.3  # seconds before re-triggering is allowed (state check prevents double-trigger)
 
 
 class WakeWordDetector:
