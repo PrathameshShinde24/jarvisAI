@@ -10,6 +10,15 @@ server.py collects these and registers them with the Brain in one loop.
 
 from tools.system import TOOL_SCHEMAS as SYSTEM_SCHEMAS, TOOL_HANDLERS as SYSTEM_HANDLERS
 from tools.web import TOOL_SCHEMAS as WEB_SCHEMAS, TOOL_HANDLERS as WEB_HANDLERS
+from core.memory import TOOL_SCHEMAS as MEMORY_SCHEMAS
 
-ALL_SCHEMAS = SYSTEM_SCHEMAS + WEB_SCHEMAS
-ALL_HANDLERS = {**SYSTEM_HANDLERS, **WEB_HANDLERS}
+# MemoryStore is instantiated once here so both handlers share the same DB
+from core.memory import MemoryStore
+_memory = MemoryStore()
+MEMORY_HANDLERS = {
+    "remember_fact": _memory.remember_fact,
+    "recall_memory": _memory.recall_memory,
+}
+
+ALL_SCHEMAS  = SYSTEM_SCHEMAS + WEB_SCHEMAS + MEMORY_SCHEMAS
+ALL_HANDLERS = {**SYSTEM_HANDLERS, **WEB_HANDLERS, **MEMORY_HANDLERS}

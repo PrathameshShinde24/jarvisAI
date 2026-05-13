@@ -8,6 +8,7 @@ Tools implemented here:
   - set_volume(level)
   - list_files(directory)
   - save_note(title, content)
+  - get_weather(city)             ← Phase 3, free via wttr.in
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+import httpx
 
 # Notes saved here
 NOTES_DIR = Path.home() / "Documents" / "JarvisNotes"
@@ -90,6 +93,17 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "content": {"type": "string", "description": "Body of the note."},
             },
             "required": ["title", "content"],
+        },
+    },
+    {
+        "name": "get_weather",
+        "description": "Get the current weather for a city. Uses wttr.in (free, no API key).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string", "description": "City name, e.g. 'Mumbai', 'London', 'New York'."}
+            },
+            "required": ["city"],
         },
     },
 ]
@@ -198,6 +212,25 @@ def save_note(inputs: dict[str, Any]) -> str:
     return f"Note saved to {filename}."
 
 
+def get_weather(inputs: dict[str, Any]) -> str:
+    """Fetch current weather for a city via wttr.in (free, no API key)."""
+    city = inputs["city"].strip()
+    url = f"https://wttr.in/{city}?format=3"  # format=3 → "City: ⛅ +22°C"
+    try:
+        resp = httpx.get(url, timeout=8, headers={"User-Agent": "curl/7.0"})
+        resp.raise_for_status()
+        text = resp.text.strip()
+        if not text:
+            return f"No weather data found for {city}."
+        return text
+    except httpx.HTTPStatusError as exc:
+        return f"Weather service returned HTTP {exc.response.status_code}."
+    except httpx.RequestError as exc:
+        return f"Couldn't reach weather service: {exc}"
+    except Exception as exc:
+        return f"Weather lookup failed: {exc}"
+
+
 # ---------------------------------------------------------------------------
 # Handler registry
 # ---------------------------------------------------------------------------
@@ -209,4 +242,5 @@ TOOL_HANDLERS: dict[str, Any] = {
     "set_volume": set_volume,
     "list_files": list_files,
     "save_note": save_note,
+    "get_weather": get_weather,
 }
