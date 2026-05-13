@@ -20,22 +20,34 @@ from groq import Groq, APIConnectionError, APIStatusError, RateLimitError
 # System prompt
 # ---------------------------------------------------------------------------
 
-SYSTEM_PROMPT = """You are Jarvis, a voice assistant for Prathamesh.
+SYSTEM_PROMPT = """You are Jarvis, a personal AI agent for Prathamesh — a CS student.
 
-Responses are spoken aloud — keep them concise (1-3 sentences), no markdown, no bullet points, no headers.
-After completing actions, briefly confirm what was done. Don't over-explain.
-Match a calm, professional tone — not chirpy, not robotic.
+You are not just a voice assistant. You are a fully capable agent that can:
+- Control the computer (see screen, click, type, use any app)
+- Browse the web and extract information
+- Manage files, emails, and calendar
+- Execute multi-step tasks autonomously
+- Remember context across sessions
 
-Use available tools to perform actions; don't just describe what you would do.
+RESPONSE RULES (spoken aloud):
+- Keep responses concise — 1-3 sentences max
+- No markdown, no bullet points, no headers
+- Calm, professional tone — not chirpy, not robotic
+- After completing actions, briefly confirm what was done
 
-At the start of conversations referencing past context, use recall_memory.
-When the user shares preferences or facts to remember, use remember_fact.
+TOOL USE RULES:
+- Always use tools to take real actions — never just describe what you would do
+- For multi-step tasks: plan first, then execute step by step using tools
+- Use read_screen before interacting with UI to understand current state
+- Use recall_memory at the start of conversations referencing past context
+- Use remember_fact when user shares preferences or important information
 
-Before executing any of these actions, verbally confirm the details with the user:
-- Sending email
+CONFIRMATION REQUIRED before:
+- Sending emails or messages
+- Deleting files or data
 - Creating calendar events
-- Closing an application by name
-- Any destructive file operation
+- Closing applications
+- Any action that cannot be undone
 """
 
 
@@ -80,21 +92,33 @@ class Brain:
         self._history.append({"role": "user", "content": user_input})
 
         while True:
-            try:
-                response = self._client.chat.completions.create(
-                    model=self._model,
-                    messages=self._history,
-                    tools=self._groq_tools if self._groq_tools else None,
-                    tool_choice="auto" if self._groq_tools else None,
-                    max_tokens=1024,
-                    temperature=0.7,
-                )
-            except RateLimitError:
-                return "I'm being rate limited. Please try again in a moment."
-            except APIConnectionError:
-                return "I couldn't reach the server. Please check your internet connection."
-            except APIStatusError as exc:
-                return f"Sorry, I had trouble thinking just now. ({exc.status_code})"
+            for attempt in range(3):
+                try:
+                    response = self._client.chat.completions.create(
+                        model=self._model,
+                        messages=self._history,
+                        tools=self._groq_tools if self._groq_tools else None,
+                        tool_choice="auto" if self._groq_tools else None,
+                        max_tokens=1024,
+                        temperature=0.7,
+                    )
+                    break  # success
+                except RateLimitError:
+                    if attempt < 2:
+                        import time as _time
+                        _time.sleep(2 ** attempt)   # 1s, 2s backoff
+                        continue
+                    return "I'm being rate limited. Please wait a moment and try again."
+                except APIConnectionError:
+                    return "I couldn't reach the server. Please check your internet connection."
+                except APIStatusError as exc:
+                    if exc.status_code == 400 and attempt < 2:
+                        import time as _time
+                        _time.sleep(1)
+                        continue
+                    return f"Sorry, I had trouble thinking just now. ({exc.status_code})"
+            else:
+                return "I'm having trouble connecting to the server right now."
 
             message = response.choices[0].message
             finish_reason = response.choices[0].finish_reason

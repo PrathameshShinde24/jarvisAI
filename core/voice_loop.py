@@ -19,9 +19,14 @@ from __future__ import annotations
 import asyncio
 from typing import Callable, Awaitable
 
+import webbrowser
+import subprocess
+
 from core.audio import record_until_silence, pcm_to_wav
 from core.stt import transcribe
 from core.tts import speak_async
+
+UI_URL = "http://localhost:8765"
 
 # State labels — also used by WebSocket broadcaster (Phase 8)
 STATE_IDLE      = "IDLE"
@@ -67,6 +72,7 @@ class VoiceLoop:
         detector = WakeWordDetector(
             on_detected=self._handle_wake,
             loop=loop,
+            get_state=lambda: self._state,
         )
         detector.start()
         print("[VoiceLoop] Running. Say 'Jarvis' to activate.")
@@ -109,13 +115,14 @@ class VoiceLoop:
             return
 
         try:
-            # 1. Confirmation cue
+            # 1. Open UI in browser + confirmation cue
             await self._set_state(STATE_LISTENING)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, lambda: webbrowser.open(UI_URL))
             await self._notify_transcript("jarvis", "Yes?")
             await speak_async("Yes?")
 
             # 2. Record
-            loop = asyncio.get_running_loop()
             pcm = await loop.run_in_executor(None, record_until_silence)
             wav = pcm_to_wav(pcm)
 

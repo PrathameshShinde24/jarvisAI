@@ -23,7 +23,7 @@ def get_model(model_size: str = "base") -> WhisperModel:
 def _get_model(model_size: str = "base") -> WhisperModel:
     global _model
     if _model is None:
-        print(f"[STT] Loading Whisper '{model_size}' model (first run may download ~150 MB)...")
+        print(f"[STT] Loading Whisper '{model_size}' model...")
         _model = WhisperModel(model_size, device="cpu", compute_type="int8")
         print("[STT] Model ready.")
     return _model
