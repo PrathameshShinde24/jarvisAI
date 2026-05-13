@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -26,7 +26,40 @@ from core.voice_loop import VoiceLoop
 from core.brain import Brain
 from tools import ALL_SCHEMAS, ALL_HANDLERS
 
-voice_loop = VoiceLoop()
+# ── WebSocket connection manager ──────────────────────────────────────────────
+class ConnectionManager:
+    def __init__(self):
+        self._clients: list[WebSocket] = []
+
+    async def connect(self, ws: WebSocket):
+        await ws.accept()
+        self._clients.append(ws)
+
+    def disconnect(self, ws: WebSocket):
+        self._clients.discard if hasattr(self._clients, 'discard') else None
+        if ws in self._clients:
+            self._clients.remove(ws)
+
+    async def broadcast(self, data: dict):
+        import json
+        dead = []
+        for ws in self._clients:
+            try:
+                await ws.send_text(json.dumps(data))
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.disconnect(ws)
+
+manager = ConnectionManager()
+
+async def _on_state_change(state: str):
+    await manager.broadcast({"type": "state", "state": state})
+
+async def _on_transcript(role: str, text: str):
+    await manager.broadcast({"type": "transcript", "role": role, "text": text})
+
+voice_loop = VoiceLoop(on_state_change=_on_state_change, on_transcript=_on_transcript)
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +100,7 @@ def _prewarm_models() -> None:
 # App
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="Jarvis", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="Jarvis", version="0.4.0", lifespan=lifespan)
 
 
 class CommandRequest(BaseModel):
@@ -91,7 +124,21 @@ async def root() -> HTMLResponse:
 @app.get("/health")
 async def health() -> dict:
     """Liveness check — returns current assistant state."""
-    return {"status": "ok", "version": "0.3.0", "state": voice_loop._state}
+    return {"status": "ok", "version": "0.4.0", "state": voice_loop._state}
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    """WebSocket — streams state changes and transcript to the UI."""
+    await manager.connect(ws)
+    # Send current state immediately on connect
+    import json
+    await ws.send_text(json.dumps({"type": "state", "state": voice_loop._state}))
+    try:
+        while True:
+            await ws.receive_text()   # keep connection alive; UI sends nothing
+    except WebSocketDisconnect:
+        manager.disconnect(ws)
 
 
 @app.post("/command")
