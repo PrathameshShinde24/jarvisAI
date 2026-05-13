@@ -102,39 +102,51 @@ class VoiceLoop:
     async def _handle_wake(self) -> None:
         """Called by the wake word detector when 'Jarvis' is heard."""
         if self._state != STATE_IDLE:
-            return  # Already active — ignore double-trigger
-
-        # 1. Confirmation cue
-        await self._set_state(STATE_LISTENING)
-        await self._notify_transcript("jarvis", "Yes?")
-        await speak_async("Yes?")
-
-        # 2. Record
-        loop = asyncio.get_running_loop()
-        pcm = await loop.run_in_executor(None, record_until_silence)
-        wav = pcm_to_wav(pcm)
-
-        # 3. Transcribe
-        await self._set_state(STATE_THINKING)
-        text = await loop.run_in_executor(None, transcribe, wav)
-
-        # 4. Skip if empty or pure noise
-        if not text or len(text.strip()) < 2:
-            await speak_async("I didn't catch that.")
-            await self._set_state(STATE_IDLE)
+            # Give feedback so user knows Jarvis is busy
+            print(f"[VoiceLoop] Busy ({self._state}) — ignoring hotkey.")
+            if self._state == STATE_SPEAKING:
+                await speak_async("One moment.")
             return
 
-        await self._notify_transcript("user", text)
+        try:
+            # 1. Confirmation cue
+            await self._set_state(STATE_LISTENING)
+            await self._notify_transcript("jarvis", "Yes?")
+            await speak_async("Yes?")
 
-        # 5. Think (echo in Phase 1, LLM in Phase 2+)
-        response = await self._think(text)
-        await self._notify_transcript("jarvis", response)
+            # 2. Record
+            loop = asyncio.get_running_loop()
+            pcm = await loop.run_in_executor(None, record_until_silence)
+            wav = pcm_to_wav(pcm)
 
-        # 6. Speak
-        await self._speak(response)
+            # 3. Transcribe
+            await self._set_state(STATE_THINKING)
+            text = await loop.run_in_executor(None, transcribe, wav)
 
-        # 7. Back to idle
-        await self._set_state(STATE_IDLE)
+            # 4. Skip if empty or pure noise
+            if not text or len(text.strip()) < 2:
+                await speak_async("I didn't catch that.")
+                return
+
+            await self._notify_transcript("user", text)
+
+            # 5. Think (echo in Phase 1, LLM in Phase 2+)
+            response = await self._think(text)
+            await self._notify_transcript("jarvis", response)
+
+            # 6. Speak
+            await self._speak(response)
+
+        except Exception as exc:
+            print(f"[VoiceLoop] Error during pipeline: {exc}")
+            try:
+                await speak_async("Sorry, something went wrong.")
+            except Exception:
+                pass
+
+        finally:
+            # Always return to IDLE — no matter what happened above
+            await self._set_state(STATE_IDLE)
 
     async def _think(self, text: str) -> str:
         """Route to Brain (Phase 2+) or simple echo (Phase 1)."""

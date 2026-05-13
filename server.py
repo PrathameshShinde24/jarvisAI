@@ -3,11 +3,11 @@ server.py — Jarvis FastAPI entry point.
 
 Phase 1: Voice loop echo mode.
 Phase 2: Brain (Groq LLM + tools) injected into voice loop.
-Phase 8: POST /command and WS /ws added.
+Phase 3: POST /command REST endpoint for text-based testing + memory tools.
 
 Run:
     python server.py
-Then press CTRL+SPACE and speak.
+Then press CTRL+SPACE and speak, or POST to /command for text input.
 """
 
 import asyncio
@@ -18,6 +18,7 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -66,7 +67,11 @@ def _prewarm_models() -> None:
 # App
 # ---------------------------------------------------------------------------
 
-app = FastAPI(title="Jarvis", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="Jarvis", version="0.3.0", lifespan=lifespan)
+
+
+class CommandRequest(BaseModel):
+    text: str
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +91,24 @@ async def root() -> HTMLResponse:
 @app.get("/health")
 async def health() -> dict:
     """Liveness check — returns current assistant state."""
-    return {"status": "ok", "version": "0.2.0", "state": voice_loop._state}
+    return {"status": "ok", "version": "0.3.0", "state": voice_loop._state}
+
+
+@app.post("/command")
+async def command(req: CommandRequest) -> dict:
+    """
+    Text-based command endpoint — bypasses voice entirely.
+    Useful for testing tools without a microphone.
+
+    POST /command
+    { "text": "What's the weather in Mumbai?" }
+    """
+    if not req.text.strip():
+        return {"error": "Empty command."}
+    loop = asyncio.get_running_loop()
+    # Brain.think() is synchronous (blocking Groq calls) — run off the event loop
+    response = await loop.run_in_executor(None, voice_loop.brain.think, req.text.strip())
+    return {"input": req.text.strip(), "response": response}
 
 
 # ---------------------------------------------------------------------------
