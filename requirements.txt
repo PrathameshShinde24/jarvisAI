@@ -35,3 +35,9 @@ comtypes>=1.4.0             # Required by pycaw
 # ── Google APIs (Phase 5) ─────────────────────────────────
 google-auth-oauthlib>=1.2.0
 google-api-python-client>=2.130.0
+
+# ── Computer control (Agent) ──────────────────────────────
+pyautogui>=0.9.54           # mouse, keyboard, screen control
+mss>=9.0.0                  # fast cross-platform screenshots
+Pillow>=10.0.0              # image processing for vision
+pygetwindow>=0.0.9          # window management
